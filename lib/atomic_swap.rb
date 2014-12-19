@@ -110,4 +110,8 @@ module AtomicSwap
     Bitcoin::P::Tx.new(refund_tx.to_payload)
   end
 
+  def self.generate_claim_tx
+    # XXX TODO
+  end
+
 end
