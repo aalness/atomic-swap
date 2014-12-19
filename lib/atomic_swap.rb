@@ -3,7 +3,7 @@ require "atomic_swap/version"
 module AtomicSwap
 
   def self.generate_tx1_and_tx2(network, private_key_wif, recipient_pubkey_hex, amount, previous_outputs)
-    Bitcoin.network, key = network, Bitcoin::Key.from_base58(private_key_wif)
+    Bitcoin.network = network
 
     # A picks a random number x
     x = SecureRandom.random_bytes(32)
@@ -11,52 +11,45 @@ module AtomicSwap
     x_hash_hex = Digest::SHA256.digest(Digest::SHA256.digest(x)).unpack("H*")[0]
 
     # A creates TX1: "Pay w BTC to <B's public key> if (x for H(x) known and signed by B) or (signed by A & B)"
-    tx1, swap_script = generate_swap_tx(network,
-                                        private_key_wif,
+    tx1, swap_script = generate_swap_tx(private_key_wif,
                                         recipient_pubkey_hex,
                                         amount,
                                         previous_outputs,
                                         x_hash_hex)
 
     # A creates TX2: "Pay w BTC from TX1 to <A's public key>, locked 48 hours in the future"
-    tx2 = generate_refund_tx(network,
-                             private_key_wif,
-                             amount,
-                             tx1,
-                             swap_script,
-                             hours=48)
+    tx2 = generate_refund_tx(private_key_wif, amount, tx1, swap_script, hours=48)
 
     { tx1: tx1, swap_script: swap_script, x: x.unpack("H*")[0], tx2: tx2 }
   end
 
   def self.generate_tx3_and_tx4(network, private_key_wif, recipient_pubkey_hex, x_hash_hex, amount, previous_outputs)
-    Bitcoin.network, key = network, Bitcoin::Key.from_base58(private_key_wif)
+    Bitcoin.network = network
 
     # B creates TX3: "Pay v alt-coins to <A-public-key> if (x for H(x) known and signed by A) or (signed by A & B)"
-    tx3, swap_script = generate_swap_tx(network,
-                                        private_key_wif,
+    tx3, swap_script = generate_swap_tx(private_key_wif,
                                         recipient_pubkey_hex,
                                         amount,
                                         previous_outputs,
                                         x_hash_hex)
 
     # B creates TX4: "Pay v alt-coins from TX3 to <B's public key>, locked 24 hours in the future"
-    tx4 = generate_refund_tx(network, private_key_wif, amount, tx3, swap_script, hours=24)
+    tx4 = generate_refund_tx(private_key_wif, amount, tx3, swap_script, hours=24)
 
     { tx3: tx3, swap_script: swap_script, tx4: tx4 }
   end
 
   FEE = (10**8)*0.0001
 
-  def self.generate_swap_tx(network, private_key_wif, recipient_pubkey_hex, amount, previous_outputs, x_hash_hex)
-    Bitcoin.network, key = network, Bitcoin::Key.from_base58(private_key_wif)
+  def self.generate_swap_tx(private_key_wif, recipient_pubkey_hex, amount, previous_outputs, x_hash_hex)
+    key = Bitcoin::Key.from_base58(private_key_wif)
     tx = Bitcoin::P::Tx.new
 
     # create the special swap script. it's now legit to have non-standard p2sh scripts although not all
     # nodes have upgraded yet to permit it.
     redeem_script =
       Bitcoin::Script.from_string("OP_IF" +
-                                  " 2 #{pubkey_hex} #{recipient_pubkey_hex} 2 OP_CHECKMULTISIGVERIFY " +
+                                  " 2 #{key.pub} #{recipient_pubkey_hex} 2 OP_CHECKMULTISIGVERIFY " +
                                   "OP_ELSE" +
                                   " #{recipient_pubkey_hex} OP_CHECKSIGVERIFY OP_HASH256 #{x_hash_hex} OP_EQUALVERIFY").raw
 
@@ -88,8 +81,8 @@ module AtomicSwap
     [ Bitcoin::P::Tx.new(tx.to_payload), redeem_script ]
   end
 
-  def self.generate_refund_tx(network, private_key_wif, amount, swap_tx, swap_script, hours)
-    Bitcoin.network, key = network, Bitcoin::Key.from_base58(private_key_wif)
+  def self.generate_refund_tx(private_key_wif, amount, swap_tx, swap_script, hours)
+    key = Bitcoin::Key.from_base58(private_key_wif)
 
     refund_tx = Bitcoin::P::Tx.new
     refund_tx.add_in(Bitcoin::P::TxIn.new(swap_tx.binary_hash, 0, script_sig='', script_sig_size=0, sequence=0))
