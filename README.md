@@ -1,6 +1,6 @@
-# AtomicSwap
+# atomic-swap
 
-This is a work in progress and not ready to be used.
+**This is a work in progress and not ready to be used.**
 
 Ruby implementation of atomic swap algorithm by Tier Nolan.
 
